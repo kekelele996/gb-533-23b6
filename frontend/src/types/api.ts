@@ -15,6 +15,6 @@ export interface PageEnvelope<T> extends ApiEnvelope<T[]> {
 }
 
 export interface ApiFailure {
-  error?: { code?: string; message?: string };
+  error?: { code?: string; message?: string; details?: { issues?: string[] } };
   request_id?: string;
 }

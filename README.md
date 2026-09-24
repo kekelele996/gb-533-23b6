@@ -179,7 +179,7 @@ queued -> simulating -> passed | failed -> reviewed -> accepted
 | POST | `/auth/login` | 登录并签发 JWT |
 | GET/POST | `/cells` | 列表、工作单元建档 |
 | GET/PUT | `/cells/:id` | 详情、草稿布局乐观锁更新 |
-| POST | `/cells/:id/freeze`、`deactivate` | 冻结或停用 |
+| POST | `/cells/:id/freeze`、`deactivate` | 冻结（先通过发布检查）或停用 |
 | GET/POST | `/zones` | 列表、区域创建 |
 | GET/PUT | `/zones/:id` | 详情、版本修订 |
 | POST | `/zones/:id/activate`、`deactivate` | 区域状态动作 |
@@ -191,7 +191,9 @@ queued -> simulating -> passed | failed -> reviewed -> accepted
 | POST | `/validations/:id/review`、`accept`、`void` | 人工处置 |
 | GET | `/audit` | 审计筛选 |
 
-健康端点为 `/healthz` 与 `/readyz`。统一错误码包括 `invalid_geometry`、`invalid_trajectory`、`invalid_program_transition`、`version_conflict`、`state_conflict`、`forbidden` 和 `unauthorized`。
+健康端点为 `/healthz` 与 `/readyz`。统一错误码包括 `invalid_geometry`、`invalid_trajectory`、`invalid_program_transition`、`version_conflict`、`state_conflict`、`freeze_precheck_failed`、`forbidden` 和 `unauthorized`。
+
+冻结布局前会执行发布检查：任一尚未启用的安全区域（含完全没有区域）或没有 `ready`/`active` 运动程序时返回 409 `freeze_precheck_failed`，并在 `error.details.issues` 中逐条列出原因；检查通过才写入冻结状态，重复冻结仍为 409 `state_conflict`。
 
 ## 环境变量和端口
 
@@ -257,6 +259,7 @@ curl -fsS http://127.0.0.1:18533/api/healthz
 - **前端 API 404**：必须从 `http://localhost:18533` 访问；Nginx 保留 `/api/v1` 前缀。
 - **422 invalid_geometry**：Polygon 必须闭合、无孔、不自交且面积至少 1 mm²。
 - **409 invalid_program_transition**：按 uploaded -> parsed -> ready -> active 顺序推进。
+- **409 freeze_precheck_failed**：启用该单元全部安全区域，并确保至少一个程序处于 ready 或 active 后重试冻结。
 - **仿真返回旧结果**：相同输入哈希和算法版本会复用；仅失败结果允许 `retry_failed=true` 创建新尝试。
 - **接受后仍显示风险**：预期行为。人工处置不会篡改碰撞、联锁或风险证据。
 - **管理员接受返回 403**：如果管理员本人上传了该程序，自审隔离仍然生效。

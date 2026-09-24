@@ -77,6 +77,24 @@ func (repository *RobotCellRepository) Transition(id uint, from, to string) erro
 	return nil
 }
 
+func (repository *RobotCellRepository) InactiveZones(id uint) ([]model.SafetyZone, error) {
+	var zones []model.SafetyZone
+	if err := repository.db.Where("robot_cell_id = ? AND zone_state <> ?", id, "active").Order("name ASC").Find(&zones).Error; err != nil {
+		return nil, fmt.Errorf("list inactive safety zones: %w", err)
+	}
+	return zones, nil
+}
+
+func (repository *RobotCellRepository) ReadyProgramCount(id uint) (int64, error) {
+	var count int64
+	if err := repository.db.Model(&model.MotionProgram{}).
+		Where("robot_cell_id = ? AND program_state IN ?", id, []string{"ready", "active"}).
+		Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("count ready motion programs: %w", err)
+	}
+	return count, nil
+}
+
 func (repository *RobotCellRepository) Counts(id uint) (int64, int64, error) {
 	var zones, programs int64
 	if err := repository.db.Model(&model.SafetyZone{}).Where("robot_cell_id = ?", id).Count(&zones).Error; err != nil {

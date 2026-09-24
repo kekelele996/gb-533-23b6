@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"robot-cell-safety-envelope-validator/backend/internal/constants"
@@ -95,8 +96,50 @@ func (service *RobotCellService) Update(id uint, request dto.UpdateRobotCellRequ
 	return service.response(after)
 }
 
+var ErrFreezePrecheck = errors.New("freeze pre-check failed")
+
 func (service *RobotCellService) Freeze(id uint, actor dto.Actor, requestID string) (dto.RobotCellResponse, error) {
+	before, err := service.repository.Get(id)
+	if err != nil {
+		return dto.RobotCellResponse{}, MapRepositoryError("robot cell", err)
+	}
+	if before.CellState != constants.CellStateDraft {
+		return dto.RobotCellResponse{}, Conflict("state_conflict", "robot cell state no longer allows this action", repository.ErrStateConflict)
+	}
+	issues, err := service.freezeIssues(id)
+	if err != nil {
+		return dto.RobotCellResponse{}, err
+	}
+	if len(issues) > 0 {
+		return dto.RobotCellResponse{}, ConflictDetails("freeze_precheck_failed", "freeze pre-check failed; resolve the listed issues and retry", map[string]any{"issues": issues}, ErrFreezePrecheck)
+	}
 	return service.transition(id, constants.CellStateDraft, constants.CellStateFrozen, "robot_cell.layout_frozen", actor, requestID)
+}
+
+func (service *RobotCellService) freezeIssues(id uint) ([]string, error) {
+	zoneCount, _, err := service.repository.Counts(id)
+	if err != nil {
+		return nil, Internal("could not check safety zones", err)
+	}
+	inactive, err := service.repository.InactiveZones(id)
+	if err != nil {
+		return nil, Internal("could not check safety zones", err)
+	}
+	readyPrograms, err := service.repository.ReadyProgramCount(id)
+	if err != nil {
+		return nil, Internal("could not check motion programs", err)
+	}
+	issues := []string{}
+	if zoneCount == 0 {
+		issues = append(issues, "no safety zones are defined for this cell")
+	}
+	for _, zone := range inactive {
+		issues = append(issues, fmt.Sprintf("safety zone %q is not active (current state: %s)", zone.Name, zone.ZoneState))
+	}
+	if readyPrograms == 0 {
+		issues = append(issues, "no motion program is ready or active")
+	}
+	return issues, nil
 }
 
 func (service *RobotCellService) Deactivate(id uint, actor dto.Actor, requestID string) (dto.RobotCellResponse, error) {

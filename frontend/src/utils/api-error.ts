@@ -8,3 +8,9 @@ export function apiErrorMessage(error: unknown): string {
   const requestId = failure?.request_id ? ` · Request ${failure.request_id}` : '';
   return message + requestId;
 }
+
+export function apiErrorIssues(error: unknown): string[] {
+  if (!(error instanceof HttpErrorResponse)) return [];
+  const failure = error.error as ApiFailure | undefined;
+  return failure?.error?.details?.issues ?? [];
+}
