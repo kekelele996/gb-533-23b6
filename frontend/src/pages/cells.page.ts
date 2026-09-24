@@ -9,7 +9,7 @@ import { LucideAngularModule } from 'lucide-angular';
 import { RobotCellStore } from '../stores/robot-cell.store';
 import { SafetyZoneApi } from '../api/safety-zone';
 import { SafetyZone } from '../types/safety-zone';
-import { RobotCell } from '../types/robot-cell';
+import { FreezeIssueKind, RobotCell } from '../types/robot-cell';
 import { useAuth } from '../hooks/use-auth';
 import { CellStateBadgeComponent } from '../components/common/cell-state-badge.component';
 import { SafetyCanvasComponent } from '../components/common/safety-canvas.component';
@@ -44,6 +44,21 @@ import { SafetyCanvasComponent } from '../components/common/safety-canvas.compon
           <header><div><span>{{ cell.cell_code }} · layout v{{ cell.layout_version }}</span><h2>{{ cell.name }}</h2></div><app-cell-state-badge [state]="cell.cell_state" /></header>
           <app-safety-canvas [zones]="zones()" />
           <dl class="cell-facts"><div><dt>Owner</dt><dd>{{ cell.owner_team }}</dd></div><div><dt>Robot</dt><dd>{{ cell.robot_model }}</dd></div><div><dt>Controller</dt><dd>{{ cell.controller_model }}</dd></div><div><dt>Maximum reach</dt><dd>{{ cell.max_reach_mm | number:'1.0-0' }} mm</dd></div></dl>
+          @if (freezeIssues().length) {
+            <div class="freeze-checks" role="alert">
+              <header><lucide-icon name="triangle-alert" [size]="16" /><div><strong>Layout cannot be frozen</strong><span>{{ freezeIssues().length }} publish {{ freezeIssues().length === 1 ? 'check' : 'checks' }} must be resolved and retried.</span></div></header>
+              <ul>
+                @for (issue of freezeIssues(); track issue.kind + '-' + (issue.zone_id ?? 0)) {
+                  <li>
+                    <span class="issue-kind">{{ issueLabel(issue.kind) }}</span>
+                    <p>{{ issue.message }}</p>
+                    @if (issue.zone_name) { <small>{{ issue.zone_name }} · {{ issue.zone_state }}</small> }
+                  </li>
+                }
+              </ul>
+              <button mat-flat-button color="primary" type="button" (click)="store.freeze(cell)"><lucide-icon name="shield-check" [size]="15" />Retry freeze v{{ cell.layout_version }}</button>
+            </div>
+          }
           @if (canEdit()) { <div class="detail-actions">@if (cell.cell_state === 'draft') { <button mat-stroked-button type="button" (click)="openEdit(cell)">Edit layout</button><button mat-flat-button color="primary" type="button" (click)="store.freeze(cell)"><lucide-icon name="shield-check" [size]="15" />Freeze v{{ cell.layout_version }}</button> } @if (cell.cell_state !== 'inactive') { <button mat-button class="danger" type="button" (click)="store.deactivate(cell)">Deactivate</button> }</div> }
         } @else { <p class="empty">No work cell available</p> }
       </aside>
@@ -65,7 +80,7 @@ import { SafetyCanvasComponent } from '../components/common/safety-canvas.compon
     }
   `,
   styles: [`
-    .boundary{display:flex;align-items:flex-start;gap:9px;margin:0 0 18px;padding:10px 12px;color:#5f4a12;background:#fff7d9;border:1px solid #ddc473;border-radius:3px}.boundary div{display:grid;gap:2px}.boundary strong{font-size:11px;text-transform:uppercase}.boundary span{font-size:11px}.cell-layout{display:grid;grid-template-columns:minmax(480px,1.25fr) minmax(360px,.75fr);gap:16px;align-items:start}.registry-panel,.detail-panel,.editor-band{background:#fafbf8;border:1px solid #bec8c4;border-radius:4px}.panel-label{display:flex;justify-content:space-between;padding:10px 13px;background:#e6ebe8;border-bottom:1px solid #c6cfcc}.panel-label span{font-size:11px;font-weight:700;text-transform:uppercase}.panel-label small{color:#667376;font-size:10px}.table-scroll{overflow:auto}table{width:100%;min-width:700px}th{color:#697477!important;font-size:9px!important;text-transform:uppercase}td{font-size:11px!important}td strong,td small{display:block}td small{margin-top:3px;color:#697477}.cell-link{display:grid;gap:2px;padding:0;color:#253034;background:none;border:0;text-align:left;cursor:pointer}.cell-link span{color:#5b686c;font-size:10px}.mat-mdc-row{cursor:pointer}.mat-mdc-row.selected{background:#f7efcf}.detail-panel{position:sticky;top:80px;overflow:hidden}.detail-panel>header,.editor-band>header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:14px 15px;border-bottom:1px solid #c8d0cd}.detail-panel header span,.editor-band header span{color:#687579;font-size:9px;text-transform:uppercase}.detail-panel h2,.editor-band h2{margin:3px 0 0;font-size:17px}.detail-panel app-safety-canvas{display:block;margin:14px}.cell-facts{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:14px;padding-top:12px;border-top:1px solid #dce1df}.cell-facts dt{color:#738084;font-size:9px;text-transform:uppercase}.cell-facts dd{margin:3px 0 0;font-size:11px;font-weight:650}.detail-actions{display:flex;gap:8px;flex-wrap:wrap;padding:0 14px 14px}.danger{color:#9a302a!important}.editor-band{margin-top:16px}.editor-band form{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 12px;padding:16px}.editor-band .wide{grid-column:1/-1}.form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px}.form-actions button{display:flex;gap:6px}
+    .boundary{display:flex;align-items:flex-start;gap:9px;margin:0 0 18px;padding:10px 12px;color:#5f4a12;background:#fff7d9;border:1px solid #ddc473;border-radius:3px}.boundary div{display:grid;gap:2px}.boundary strong{font-size:11px;text-transform:uppercase}.boundary span{font-size:11px}.freeze-checks{margin:0 14px 14px;padding:12px;border:1px solid #d9a4a0;border-radius:4px;background:#fcf1f0}.freeze-checks header{display:flex;align-items:flex-start;gap:8px;color:#8a2a23}.freeze-checks header div{display:grid;gap:2px}.freeze-checks strong{font-size:12px}.freeze-checks header span{color:#9a5b56;font-size:10px}.freeze-checks ul{display:grid;gap:8px;margin:10px 0 12px;padding:0;list-style:none}.freeze-checks li{display:grid;gap:3px;padding:8px 10px;background:#fff;border:1px solid #e6c7c4;border-radius:3px}.freeze-checks .issue-kind{display:inline-block;justify-self:start;padding:1px 7px;border-radius:10px;background:#8a2a23;color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.freeze-checks li p{margin:0;font-size:11px;color:#3d2624}.freeze-checks li small{color:#8a6a67;font-size:10px}.freeze-checks button{display:inline-flex;align-items:center;gap:6px}.cell-layout{display:grid;grid-template-columns:minmax(480px,1.25fr) minmax(360px,.75fr);gap:16px;align-items:start}.registry-panel,.detail-panel,.editor-band{background:#fafbf8;border:1px solid #bec8c4;border-radius:4px}.panel-label{display:flex;justify-content:space-between;padding:10px 13px;background:#e6ebe8;border-bottom:1px solid #c6cfcc}.panel-label span{font-size:11px;font-weight:700;text-transform:uppercase}.panel-label small{color:#667376;font-size:10px}.table-scroll{overflow:auto}table{width:100%;min-width:700px}th{color:#697477!important;font-size:9px!important;text-transform:uppercase}td{font-size:11px!important}td strong,td small{display:block}td small{margin-top:3px;color:#697477}.cell-link{display:grid;gap:2px;padding:0;color:#253034;background:none;border:0;text-align:left;cursor:pointer}.cell-link span{color:#5b686c;font-size:10px}.mat-mdc-row{cursor:pointer}.mat-mdc-row.selected{background:#f7efcf}.detail-panel{position:sticky;top:80px;overflow:hidden}.detail-panel>header,.editor-band>header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:14px 15px;border-bottom:1px solid #c8d0cd}.detail-panel header span,.editor-band header span{color:#687579;font-size:9px;text-transform:uppercase}.detail-panel h2,.editor-band h2{margin:3px 0 0;font-size:17px}.detail-panel app-safety-canvas{display:block;margin:14px}.cell-facts{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:14px;padding-top:12px;border-top:1px solid #dce1df}.cell-facts dt{color:#738084;font-size:9px;text-transform:uppercase}.cell-facts dd{margin:3px 0 0;font-size:11px;font-weight:650}.detail-actions{display:flex;gap:8px;flex-wrap:wrap;padding:0 14px 14px}.danger{color:#9a302a!important}.editor-band{margin-top:16px}.editor-band form{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 12px;padding:16px}.editor-band .wide{grid-column:1/-1}.form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px}.form-actions button{display:flex;gap:6px}
     @media(max-width:1100px){.cell-layout{grid-template-columns:1fr}.detail-panel{position:static}.editor-band form{grid-template-columns:repeat(2,1fr)}}@media(max-width:650px){.editor-band form{grid-template-columns:1fr}.editor-band .wide,.form-actions{grid-column:1}.panel-label small{display:none}.cell-layout{display:block}.detail-panel{margin-top:12px}}
   `],
 })
@@ -85,6 +100,18 @@ export class CellsPage implements OnInit {
     layout_geojson: ['{"type":"FeatureCollection","features":[]}', Validators.required],
   });
   canEdit = () => this.auth.can('safety_engineer', 'admin');
+  readonly freezeIssues = this.store.freezeIssues;
+
+  issueLabel(kind: FreezeIssueKind): string {
+    switch (kind) {
+      case 'no_safety_zone':
+        return 'Missing safety zone';
+      case 'zone_not_active':
+        return 'Zone not enabled';
+      case 'no_ready_or_active_program':
+        return 'No ready or active program';
+    }
+  }
   constructor() {
     effect(() => {
       const cell = this.store.selected();

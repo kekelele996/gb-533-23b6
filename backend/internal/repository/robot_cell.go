@@ -87,3 +87,19 @@ func (repository *RobotCellRepository) Counts(id uint) (int64, int64, error) {
 	}
 	return zones, programs, nil
 }
+
+func (repository *RobotCellRepository) ZonesForCell(id uint) ([]model.SafetyZone, error) {
+	var zones []model.SafetyZone
+	if err := repository.db.Where("robot_cell_id = ?", id).Order("name ASC, id ASC").Find(&zones).Error; err != nil {
+		return nil, fmt.Errorf("list cell zones: %w", err)
+	}
+	return zones, nil
+}
+
+func (repository *RobotCellRepository) ProgramsForCell(id uint) ([]model.MotionProgram, error) {
+	var programs []model.MotionProgram
+	if err := repository.db.Where("robot_cell_id = ?", id).Order("program_code ASC, version DESC, id ASC").Find(&programs).Error; err != nil {
+		return nil, fmt.Errorf("list cell programs: %w", err)
+	}
+	return programs, nil
+}

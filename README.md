@@ -191,7 +191,9 @@ queued -> simulating -> passed | failed -> reviewed -> accepted
 | POST | `/validations/:id/review`、`accept`、`void` | 人工处置 |
 | GET | `/audit` | 审计筛选 |
 
-健康端点为 `/healthz` 与 `/readyz`。统一错误码包括 `invalid_geometry`、`invalid_trajectory`、`invalid_program_transition`、`version_conflict`、`state_conflict`、`forbidden` 和 `unauthorized`。
+健康端点为 `/healthz` 与 `/readyz`。统一错误码包括 `invalid_geometry`、`invalid_trajectory`、`invalid_program_transition`、`version_conflict`、`state_conflict`、`freeze_checks_failed`、`forbidden` 和 `unauthorized`。
+
+冻结前会执行发布检查：工作单元必须至少有一个 `active` 安全区域（未绘制区域返回 `no_safety_zone`，区域处于 `draft`/`inactive` 时逐条返回 `zone_not_active`），并且至少有一个 `ready` 或 `active` 运动程序（否则返回 `no_ready_or_active_program`）。任一问题存在时 `POST /cells/:id/freeze` 返回 409 `freeze_checks_failed`，响应 `error.details.issues` 逐条列出原因，检查通过才写入冻结状态；对已冻结/非草稿单元的重复冻结仍返回 409 `state_conflict`。
 
 ## 环境变量和端口
 

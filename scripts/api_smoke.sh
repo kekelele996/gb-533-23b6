@@ -62,6 +62,8 @@ request "programmer cannot create cell" 403 POST "/cells" "$programmer_token" "$
 request "engineer creates robot cell" 201 POST "/cells" "$engineer_token" "$cell_payload"
 cell_id="$(jq -r '.data.id' <<<"$last_body")"
 require_json '.data.cell_state == "draft" and .data.layout_version == 1' "new cell state and version"
+request "freeze blocked without zones or programs" 409 POST "/cells/$cell_id/freeze" "$engineer_token"
+require_json '.error.code == "freeze_checks_failed" and ([.error.details.issues[].kind] | sort) == ["no_ready_or_active_program","no_safety_zone"]' "freeze publish checks list both blocking issues"
 request "robot cell detail" 200 GET "/cells/$cell_id" "$auditor_token"
 
 invalid_zone="$(jq -nc --argjson cell "$cell_id" '{robot_cell_id:$cell,name:"Invalid bow tie",zone_type:"restricted",polygon_geojson:{type:"Polygon",coordinates:[[[0,0],[500,500],[0,500],[500,0],[0,0]]]},min_height_mm:0,max_height_mm:2000,speed_limit_mm_s:100,access_rule:"Must reject self intersection"}')"
@@ -85,6 +87,10 @@ request "parse program" 200 POST "/programs/$program_id/transition" "$programmer
 request "mark program ready" 200 POST "/programs/$program_id/transition" "$programmer_token" '{"target_state":"ready"}'
 request "activate program" 200 POST "/programs/$program_id/transition" "$programmer_token" '{"target_state":"active"}'
 require_json '.data.program_state == "active"' "program active"
+request "freeze cell after publish checks pass" 200 POST "/cells/$cell_id/freeze" "$engineer_token"
+require_json '.data.cell_state == "frozen"' "cell layout frozen"
+request "repeat freeze rejected as state conflict" 409 POST "/cells/$cell_id/freeze" "$engineer_token"
+require_json '.error.code == "state_conflict"' "duplicate freeze stays a state conflict"
 
 idempotency="qa-validation-533-main"
 request "run envelope simulation" 201 POST "/validations" "$engineer_token" "$(jq -nc --argjson program "$program_id" '{motion_program_id:$program,retry_failed:false}')" "$idempotency"

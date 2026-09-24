@@ -1,8 +1,8 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { finalize } from 'rxjs';
 import { RobotCellApi } from '../api/robot-cell';
-import { apiErrorMessage } from '../utils/api-error';
-import { CreateRobotCell, RobotCell, UpdateRobotCell } from '../types/robot-cell';
+import { apiErrorMessage, apiFreezeIssues } from '../utils/api-error';
+import { CreateRobotCell, FreezeCheckIssue, RobotCell, UpdateRobotCell } from '../types/robot-cell';
 
 @Injectable({ providedIn: 'root' })
 export class RobotCellStore {
@@ -11,6 +11,7 @@ export class RobotCellStore {
   readonly selected = signal<RobotCell | null>(null);
   readonly loading = signal(false);
   readonly error = signal('');
+  readonly freezeIssues = signal<FreezeCheckIssue[]>([]);
 
   load(): void {
     this.loading.set(true);
@@ -24,7 +25,10 @@ export class RobotCellStore {
     });
   }
 
-  choose(cell: RobotCell): void { this.selected.set(cell); }
+  choose(cell: RobotCell): void {
+    this.selected.set(cell);
+    this.freezeIssues.set([]);
+  }
 
   create(payload: CreateRobotCell, done?: () => void): void {
     this.mutate(this.api.create(payload), done);
@@ -34,19 +38,39 @@ export class RobotCellStore {
     this.mutate(this.api.update(id, payload), done);
   }
 
-  freeze(cell: RobotCell): void { this.mutate(this.api.freeze(cell.id)); }
-  deactivate(cell: RobotCell): void { this.mutate(this.api.deactivate(cell.id)); }
+  freeze(cell: RobotCell): void {
+    this.loading.set(true);
+    this.error.set('');
+    this.freezeIssues.set([]);
+    this.api.freeze(cell.id).pipe(finalize(() => this.loading.set(false))).subscribe({
+      next: ({ data }) => this.applyCell(data),
+      error: (error) => {
+        this.error.set(apiErrorMessage(error));
+        this.freezeIssues.set(apiFreezeIssues(error));
+      },
+    });
+  }
+
+  deactivate(cell: RobotCell): void {
+    this.mutate(this.api.deactivate(cell.id));
+  }
 
   private mutate(request: ReturnType<RobotCellApi['create']>, done?: () => void): void {
     this.loading.set(true);
     this.error.set('');
+    this.freezeIssues.set([]);
     request.pipe(finalize(() => this.loading.set(false))).subscribe({
       next: ({ data }) => {
-        this.items.update((items) => [data, ...items.filter((item) => item.id !== data.id)].sort((a, b) => a.cell_code.localeCompare(b.cell_code)));
-        this.selected.set(data);
+        this.applyCell(data);
         done?.();
       },
       error: (error) => this.error.set(apiErrorMessage(error)),
     });
+  }
+
+  private applyCell(data: RobotCell): void {
+    this.items.update((items) => [data, ...items.filter((item) => item.id !== data.id)].sort((a, b) => a.cell_code.localeCompare(b.cell_code)));
+    this.selected.set(data);
+    this.freezeIssues.set([]);
   }
 }

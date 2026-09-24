@@ -96,7 +96,39 @@ func (service *RobotCellService) Update(id uint, request dto.UpdateRobotCellRequ
 }
 
 func (service *RobotCellService) Freeze(id uint, actor dto.Actor, requestID string) (dto.RobotCellResponse, error) {
+	before, err := service.repository.Get(id)
+	if err != nil {
+		return dto.RobotCellResponse{}, MapRepositoryError("robot cell", err)
+	}
+	// Repeat submissions and operations from stale pages must remain state conflicts.
+	if before.CellState != constants.CellStateDraft {
+		return dto.RobotCellResponse{}, Conflict("state_conflict", "robot cell is not in draft state, layout cannot be frozen", repository.ErrStateConflict)
+	}
+	issues, err := service.publishIssues(id)
+	if err != nil {
+		return dto.RobotCellResponse{}, err
+	}
+	if len(issues) > 0 {
+		return dto.RobotCellResponse{}, ConflictWithDetails(
+			"freeze_checks_failed",
+			"layout publish checks failed; resolve the listed issues before freezing",
+			map[string]any{"issues": issues},
+			repository.ErrStateConflict,
+		)
+	}
 	return service.transition(id, constants.CellStateDraft, constants.CellStateFrozen, "robot_cell.layout_frozen", actor, requestID)
+}
+
+func (service *RobotCellService) publishIssues(cellID uint) ([]dto.FreezeCheckIssue, error) {
+	zones, err := service.repository.ZonesForCell(cellID)
+	if err != nil {
+		return nil, Internal("could not verify safety zones before freezing", err)
+	}
+	programs, err := service.repository.ProgramsForCell(cellID)
+	if err != nil {
+		return nil, Internal("could not verify motion programs before freezing", err)
+	}
+	return BuildFreezeIssues(zones, programs), nil
 }
 
 func (service *RobotCellService) Deactivate(id uint, actor dto.Actor, requestID string) (dto.RobotCellResponse, error) {

@@ -32,3 +32,13 @@ export interface CreateRobotCell {
 export interface UpdateRobotCell extends Omit<CreateRobotCell, 'cell_code'> {
   layout_version: number;
 }
+
+export type FreezeIssueKind = 'no_safety_zone' | 'zone_not_active' | 'no_ready_or_active_program';
+
+export interface FreezeCheckIssue {
+  kind: FreezeIssueKind;
+  message: string;
+  zone_id?: number;
+  zone_name?: string;
+  zone_state?: string;
+}

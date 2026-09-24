@@ -41,3 +41,14 @@ type RobotCellResponse struct {
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
 }
+
+// FreezeCheckIssue describes one blocking reason returned with a 409
+// when a draft cell cannot pass the pre-freeze publish checks.
+type FreezeCheckIssue struct {
+	Kind         string `json:"kind"`
+	Message      string `json:"message"`
+	ZoneID       uint   `json:"zone_id,omitempty"`
+	ZoneName     string `json:"zone_name,omitempty"`
+	ZoneState    string `json:"zone_state,omitempty"`
+	ProgramCount int    `json:"program_count,omitempty"`
+}
